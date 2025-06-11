@@ -1,6 +1,29 @@
 import React, { useState, useEffect } from 'react';
 
-// --- Mock API & "Overridden" Functions ---
+// --- Mock API, "Overridden" Functions, and a Mock WebSocket ---
+
+// A simple event emitter to simulate a real-time connection (like a WebSocket)
+// This helps demonstrate the pattern you observed with 'ProjectSocket'.
+const mockSocket = {
+    listeners: {},
+    on(event, callback) {
+        if (!this.listeners[event]) {
+            this.listeners[event] = [];
+        }
+        this.listeners[event].push(callback);
+    },
+    off(event, callback) {
+        if (this.listeners[event]) {
+            this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+        }
+    },
+    emit(event, data) {
+        if (this.listeners[event]) {
+            this.listeners[event].forEach(callback => callback(data));
+        }
+    }
+};
+
 // This simulates a backend. In a real app, these would be network requests.
 // We're creating a mock to demonstrate the fix for the comment submission.
 const mockInitialComments = [
@@ -18,12 +41,23 @@ async function fetchComments() {
 }
 
 // This function "overrides" the broken send command.
+// It now simulates sending a comment and then receiving a real-time event.
 async function postComment(comment) {
     // Simulate network delay and backend processing
     await new Promise(res => setTimeout(res, 500));
     const newComment = { ...comment, id: nextId++ };
     mockInitialComments.push(newComment); // Add to our mock "database"
-    return newComment;
+
+    // In a real-time application, the server would push an event back to all
+    // connected clients. We simulate that here, mimicking the 'ProjectSocket'
+    // event the user described.
+    console.log("Simulating server event: 'comment:created'");
+    mockSocket.emit('comment:created', {
+        type: 'comment:created',
+        data: { comment: newComment }
+    });
+    // The function no longer needs to return the comment. The UI update is
+    // now handled by the socket listener in the App component.
 }
 
 // --- React Components (without JSX) ---
@@ -65,6 +99,7 @@ function CommentForm({ onCommentSubmit }) {
         if (!author.trim() || !text.trim() || isSubmitting) return;
         
         setIsSubmitting(true);
+        // This now just sends the comment. The UI update is handled by the event listener.
         await onCommentSubmit({ author, text });
         setText('');
         setIsSubmitting(false);
@@ -104,20 +139,43 @@ export default function App() {
             setIsLoading(false);
         });
     }, []);
+    
+    // --- Real-Time Update Logic ---
+    // This effect sets up a listener for our mock socket.
+    // This mirrors how a real application would listen for WebSocket events
+    // like the 'comment:created' one you described.
+    useEffect(() => {
+        const handleNewCommentEvent = (eventData) => {
+            console.log("Client received 'comment:created' event:", eventData);
+            const newComment = eventData.data.comment;
+            // The state update here is what makes the new comment appear in the list.
+            setComments(currentComments => {
+                // Avoid adding duplicates if a comment somehow already exists
+                if (currentComments.find(c => c.id === newComment.id)) {
+                    return currentComments;
+                }
+                return [...currentComments, newComment];
+            });
+        };
+        
+        // Listen for new comments
+        mockSocket.on('comment:created', handleNewCommentEvent);
 
-    // This function handles the submission and updates the UI.
-    // This is the core of the fix: ensuring the React state is updated
-    // after the "send" action is complete, which triggers a re-render.
+        // Clean up the listener when the component unmounts to prevent memory leaks
+        return () => {
+            mockSocket.off('comment:created', handleNewCommentEvent);
+        };
+    }, []); // The empty dependency array ensures this effect runs only once.
+
+    // This function is passed to the form. It's now much simpler.
     const handleAddComment = async (comment) => {
-        const newComment = await postComment(comment);
-        // The state update here is what makes the new comment appear in the list.
-        // The original code was likely missing this crucial step.
-        setComments(currentComments => [...currentComments, newComment]);
+        // Just post the comment. The socket listener is responsible for updating the UI.
+        await postComment(comment);
     };
 
     return React.createElement('div', null,
         React.createElement('h1', null, 'Interactive Comment Section'),
-        React.createElement('p', { className: 'explanation' }, 'This is a working demonstration of a comment section. The key fix is that after you "Send Comment", the list updates immediately. This is achieved by properly updating the application\'s state after the comment is submitted.'),
+        React.createElement('p', { className: 'explanation' }, 'This demonstration now simulates a real-time backend. When you "Send Comment", it mimics sending data to a server, which then broadcasts a "comment:created" event (like the "ProjectSocket" event you mentioned) to all users. The app listens for this event and updates the comment list, ensuring everyone sees the new comment instantly.'),
         React.createElement('hr', null),
         React.createElement('h2', null, 'Comments'),
         isLoading

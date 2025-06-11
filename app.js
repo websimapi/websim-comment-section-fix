@@ -110,6 +110,13 @@ const mockInitialComments = [
 
 let nextId = 3;
 
+// Mock function to fetch initial comments
+async function fetchComments() {
+    // Simulate network delay
+    await new Promise(res => setTimeout(res, 300));
+    return [...mockInitialComments];
+}
+
 // This function now tries WebSIM integration first, then falls back to mock
 async function postComment(comment) {
     const projectId = getProjectId();

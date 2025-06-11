@@ -26,28 +26,32 @@ async function postComment(comment) {
     return newComment;
 }
 
-// --- React Components ---
+// --- React Components (without JSX) ---
 
 function Comment({ author, text }) {
-    return (
-        <div className="comment">
-            <p>
-                <strong>{author}</strong>: {text}
-            </p>
-        </div>
+    return React.createElement(
+        'div',
+        { className: 'comment' },
+        React.createElement(
+            'p',
+            null,
+            React.createElement('strong', null, author),
+            ': ',
+            text
+        )
     );
 }
 
 function CommentList({ comments }) {
     if (comments.length === 0) {
-        return <div className="explanation">No comments yet. Be the first to post!</div>;
+        return React.createElement('div', { className: 'explanation' }, 'No comments yet. Be the first to post!');
     }
-    return (
-        <div className="comment-list">
-            {comments.map(comment => (
-                <Comment key={comment.id} author={comment.author} text={comment.text} />
-            ))}
-        </div>
+    return React.createElement(
+        'div',
+        { className: 'comment-list' },
+        comments.map(comment =>
+            React.createElement(Comment, { key: comment.id, author: comment.author, text: comment.text })
+        )
     );
 }
 
@@ -66,28 +70,26 @@ function CommentForm({ onCommentSubmit }) {
         setIsSubmitting(false);
     };
 
-    return (
-        <form className="comment-form" onSubmit={handleSubmit}>
-            <input
-                type="text"
-                placeholder="Your name"
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
-                aria-label="Your name"
-                disabled={isSubmitting}
-            />
-            <textarea
-                placeholder="Write a comment..."
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows="3"
-                aria-label="Comment text"
-                disabled={isSubmitting}
-            />
-            <button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Sending...' : 'Send Comment'}
-            </button>
-        </form>
+    return React.createElement('form', { className: 'comment-form', onSubmit: handleSubmit },
+        React.createElement('input', {
+            type: 'text',
+            placeholder: 'Your name',
+            value: author,
+            onChange: (e) => setAuthor(e.target.value),
+            'aria-label': 'Your name',
+            disabled: isSubmitting
+        }),
+        React.createElement('textarea', {
+            placeholder: 'Write a comment...',
+            value: text,
+            onChange: (e) => setText(e.target.value),
+            rows: '3',
+            'aria-label': 'Comment text',
+            disabled: isSubmitting
+        }),
+        React.createElement('button', { type: 'submit', disabled: isSubmitting },
+            isSubmitting ? 'Sending...' : 'Send Comment'
+        )
     );
 }
 
@@ -113,19 +115,15 @@ export default function App() {
         setComments(currentComments => [...currentComments, newComment]);
     };
 
-    return (
-        <div>
-            <h1>Interactive Comment Section</h1>
-            <p className="explanation">This is a working demonstration of a comment section. The key fix is that after you "Send Comment", the list updates immediately. This is achieved by properly updating the application's state after the comment is submitted.</p>
-            
-            <hr />
-
-            <h2>Comments</h2>
-            {isLoading ? <p className="loading">Loading comments...</p> : <CommentList comments={comments} />}
-            
-            <h2>Add a Comment</h2>
-            <CommentForm onCommentSubmit={handleAddComment} />
-        </div>
+    return React.createElement('div', null,
+        React.createElement('h1', null, 'Interactive Comment Section'),
+        React.createElement('p', { className: 'explanation' }, 'This is a working demonstration of a comment section. The key fix is that after you "Send Comment", the list updates immediately. This is achieved by properly updating the application\'s state after the comment is submitted.'),
+        React.createElement('hr', null),
+        React.createElement('h2', null, 'Comments'),
+        isLoading
+            ? React.createElement('p', { className: 'loading' }, 'Loading comments...')
+            : React.createElement(CommentList, { comments: comments }),
+        React.createElement('h2', null, 'Add a Comment'),
+        React.createElement(CommentForm, { onCommentSubmit: handleAddComment })
     );
 }
-

@@ -26,6 +26,15 @@ const getProjectId = () => {
         // Fallback: try to get from current URL
         const currentMatch = window.location.href.match(/project[_-]?id[=:]([^&\s]+)/i);
         if (currentMatch) return currentMatch[1];
+        
+        // Try to get from parent URL
+        try {
+            const parentUrl = window.parent.location.href;
+            const parentMatch = parentUrl.match(/\/p\/([^\/\?]+)/);
+            if (parentMatch) return parentMatch[1];
+        } catch (e) {
+            // Cross-origin restriction, ignore
+        }
     } catch (e) {
         console.warn('Cannot extract project ID:', e);
     }
@@ -52,20 +61,45 @@ const postCommentToWebSIM = async (comment, projectId) => {
     try {
         const parent = getParentWebSIM();
         if (parent && parent.window) {
-            // Try to access parent's comment posting function
-            if (parent.window.postComment) {
-                return await parent.window.postComment(comment, projectId);
-            }
-            
             // Try to access parent's API client
-            if (parent.window.apiClient || parent.window.I) {
-                const apiClient = parent.window.apiClient || parent.window.I();
+            if (parent.window.I) {
+                const apiClient = parent.window.I();
+                console.log('Attempting to post comment via WebSIM API:', comment);
+                
                 const response = await apiClient.ref('POST /projects/:id/comments').fetch({
                     params: { id: projectId },
-                    body: { content: comment.text, author: comment.author }
+                    body: { 
+                        content: comment.text, 
+                        raw_content: comment.text,
+                        parent_comment_id: null 
+                    }
                 });
+                
                 if (response.ok) {
+                    console.log('Successfully posted comment to WebSIM:', response.body);
                     return response.body;
+                }
+            }
+            
+            // Try alternative parent API access
+            if (parent.fetch) {
+                const response = await parent.fetch(`/api/v1/projects/${projectId}/comments`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        content: comment.text,
+                        raw_content: comment.text,
+                        parent_comment_id: null
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('Successfully posted comment via fetch:', result);
+                    return result;
                 }
             }
         }
@@ -112,6 +146,31 @@ let nextId = 3;
 
 // Mock function to fetch initial comments
 async function fetchComments() {
+    const projectId = getProjectId();
+    
+    // Try to fetch real comments from WebSIM first
+    try {
+        const parent = getParentWebSIM();
+        if (parent && parent.window && parent.window.I) {
+            const apiClient = parent.window.I();
+            const response = await apiClient.ref('GET /projects/:id/comments').fetch({
+                params: { id: projectId },
+                query: { sort: 'created_at', limit: 50 }
+            });
+            
+            if (response.ok && response.body && response.body.data) {
+                console.log('Fetched real comments from WebSIM:', response.body.data);
+                return response.body.data.map(item => ({
+                    id: item.comment.id,
+                    author: item.comment.created_by?.username || 'User',
+                    text: item.comment.content || item.comment.raw_content || 'Comment'
+                }));
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to fetch real comments, using mock:', e);
+    }
+    
     // Simulate network delay
     await new Promise(res => setTimeout(res, 300));
     return [...mockInitialComments];
@@ -121,14 +180,17 @@ async function fetchComments() {
 async function postComment(comment) {
     const projectId = getProjectId();
     
+    console.log('Posting comment:', comment, 'to project:', projectId);
+    
     // Try WebSIM integration first
     const webSimResult = await postCommentToWebSIM(comment, projectId);
     if (webSimResult) {
-        console.log('Posted to WebSIM successfully:', webSimResult);
+        console.log('Posted to WebSIM successfully, waiting for real-time update...');
         return; // WebSIM will handle the real-time update via ProjectSocket
     }
     
     // Fallback to mock behavior
+    console.log('WebSIM integration failed, using mock behavior');
     await new Promise(res => setTimeout(res, 500));
     const newComment = { ...comment, id: nextId++ };
     mockInitialComments.push(newComment);
@@ -225,6 +287,7 @@ export default function App() {
             // Handle comment:created events from WebSIM
             if (eventData.type === 'comment:created') {
                 const newComment = eventData.data.comment;
+                console.log('Received real-time comment:', newComment);
                 setComments(currentComments => {
                     if (currentComments.find(c => c.id === newComment.id)) {
                         return currentComments;
@@ -241,6 +304,8 @@ export default function App() {
         if (socket) {
             setProjectSocket(socket);
             console.log('ProjectSocket connected successfully');
+        } else {
+            console.log('ProjectSocket not available, using mock socket');
         }
         
         return () => {
@@ -288,8 +353,8 @@ export default function App() {
         React.createElement('h1', null, 'Interactive Comment Section'),
         React.createElement('p', { className: 'explanation' }, 
             projectSocket 
-                ? 'Connected to WebSIM real-time system! Comments posted here will appear in the actual WebSIM project.'
-                : 'This demonstration simulates a real-time backend. When you "Send Comment", it mimics sending data to a server, which then broadcasts a "comment:created" event to all users.'
+                ? 'Connected to WebSIM real-time system! Comments posted here will appear in the actual WebSIM project and will be visible to all users.'
+                : 'This demonstration simulates a real-time backend. When you "Send Comment", it tries to connect to the parent WebSIM system first, then falls back to mock behavior.'
         ),
         React.createElement('hr', null),
         React.createElement('h2', null, 'Comments'),

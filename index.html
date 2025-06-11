@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comment Section Fix</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; color: #1c1e21; padding: 20px; line-height: 1.5; margin: 0;}
+        #root { max-width: 600px; margin: 20px auto; background: #fff; padding: 20px 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-top: 20px; margin-bottom: 15px; }
+        h1 { font-size: 1.8em; }
+        h2 { font-size: 1.4em; }
+        .comment-list { padding: 0; }
+        .comment { border-bottom: 1px solid #e9ebee; padding: 12px 0; }
+        .comment:last-child { border-bottom: none; }
+        .comment p { margin: 0; }
+        .comment strong { color: #385898; font-weight: 600; }
+        .comment-form { margin-top: 20px; }
+        .comment-form input, .comment-form textarea { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 1em; }
+        .comment-form textarea { resize: vertical; min-height: 60px; }
+        .comment-form button { background-color: #1877f2; color: white; border: none; padding: 10px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; display: block; width: 100%; }
+        .comment-form button:hover { background-color: #166fe5; }
+        hr { border: 0; border-top: 1px solid #eee; margin: 25px 0; }
+        .loading, .explanation { text-align: center; color: #65676b; padding: 20px 0;}
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0?dev",
+        "react-dom/client": "https://esm.sh/react-dom/client?dev",
+        "app": "./app.js"
+      }
+    }
+  </script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module">
+        import React from 'react';
+        import ReactDOM from 'react-dom/client';
+        import App from 'app';
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+

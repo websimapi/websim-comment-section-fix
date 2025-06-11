@@ -1,5 +1,82 @@
 import React, { useState, useEffect } from 'react';
 
+// --- Integration with Parent WebSIM System ---
+
+// Try to access parent window's WebSIM functionality
+const getParentWebSIM = () => {
+    try {
+        if (window.parent && window.parent !== window) {
+            // Check if parent has WebSIM functionality
+            return window.parent;
+        }
+    } catch (e) {
+        console.warn('Cannot access parent window:', e);
+    }
+    return null;
+};
+
+// Extract project ID from URL or parent context
+const getProjectId = () => {
+    try {
+        const parent = getParentWebSIM();
+        if (parent && parent.location) {
+            const match = parent.location.pathname.match(/\/p\/([^\/]+)/);
+            if (match) return match[1];
+        }
+        // Fallback: try to get from current URL
+        const currentMatch = window.location.href.match(/project[_-]?id[=:]([^&\s]+)/i);
+        if (currentMatch) return currentMatch[1];
+    } catch (e) {
+        console.warn('Cannot extract project ID:', e);
+    }
+    return 'mock_project_id'; // Fallback for demo
+};
+
+// ProjectSocket integration for real-time updates
+const setupProjectSocket = (projectId, onMessage) => {
+    try {
+        const parent = getParentWebSIM();
+        if (parent && parent.window && parent.window.ProjectSocket) {
+            // Use parent's ProjectSocket if available
+            const socket = new parent.window.ProjectSocket({ project_id: projectId, onMessage });
+            return socket;
+        }
+    } catch (e) {
+        console.warn('ProjectSocket not available:', e);
+    }
+    return null;
+};
+
+// Post comment using parent WebSIM functionality
+const postCommentToWebSIM = async (comment, projectId) => {
+    try {
+        const parent = getParentWebSIM();
+        if (parent && parent.window) {
+            // Try to access parent's comment posting function
+            if (parent.window.postComment) {
+                return await parent.window.postComment(comment, projectId);
+            }
+            
+            // Try to access parent's API client
+            if (parent.window.apiClient || parent.window.I) {
+                const apiClient = parent.window.apiClient || parent.window.I();
+                const response = await apiClient.ref('POST /projects/:id/comments').fetch({
+                    params: { id: projectId },
+                    body: { content: comment.text, author: comment.author }
+                });
+                if (response.ok) {
+                    return response.body;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to post to WebSIM:', e);
+    }
+    
+    // Fallback to mock
+    return null;
+};
+
 // --- Mock API, "Overridden" Functions, and a Mock WebSocket ---
 
 // A simple event emitter to simulate a real-time connection (like a WebSocket)
@@ -33,31 +110,27 @@ const mockInitialComments = [
 
 let nextId = 3;
 
-// This function "overrides" any non-working logic to properly fetch comments.
-async function fetchComments() {
-    // Simulate network delay
-    await new Promise(res => setTimeout(res, 500));
-    return [...mockInitialComments]; // Return a copy to prevent mutation issues
-}
-
-// This function "overrides" the broken send command.
-// It now simulates sending a comment and then receiving a real-time event.
+// This function now tries WebSIM integration first, then falls back to mock
 async function postComment(comment) {
-    // Simulate network delay and backend processing
+    const projectId = getProjectId();
+    
+    // Try WebSIM integration first
+    const webSimResult = await postCommentToWebSIM(comment, projectId);
+    if (webSimResult) {
+        console.log('Posted to WebSIM successfully:', webSimResult);
+        return; // WebSIM will handle the real-time update via ProjectSocket
+    }
+    
+    // Fallback to mock behavior
     await new Promise(res => setTimeout(res, 500));
     const newComment = { ...comment, id: nextId++ };
-    mockInitialComments.push(newComment); // Add to our mock "database"
+    mockInitialComments.push(newComment);
 
-    // In a real-time application, the server would push an event back to all
-    // connected clients. We simulate that here, mimicking the 'ProjectSocket'
-    // event the user described.
     console.log("Simulating server event: 'comment:created'");
     mockSocket.emit('comment:created', {
         type: 'comment:created',
         data: { comment: newComment }
     });
-    // The function no longer needs to return the comment. The UI update is
-    // now handled by the socket listener in the App component.
 }
 
 // --- React Components (without JSX) ---
@@ -131,6 +204,44 @@ function CommentForm({ onCommentSubmit }) {
 export default function App() {
     const [comments, setComments] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [projectSocket, setProjectSocket] = useState(null);
+
+    // Setup WebSIM integration
+    useEffect(() => {
+        const projectId = getProjectId();
+        console.log('Setting up WebSIM integration for project:', projectId);
+        
+        // Try to setup ProjectSocket for real-time updates
+        const socket = setupProjectSocket(projectId, (eventData) => {
+            console.log('WebSIM ProjectSocket event:', eventData);
+            
+            // Handle comment:created events from WebSIM
+            if (eventData.type === 'comment:created') {
+                const newComment = eventData.data.comment;
+                setComments(currentComments => {
+                    if (currentComments.find(c => c.id === newComment.id)) {
+                        return currentComments;
+                    }
+                    return [...currentComments, {
+                        id: newComment.id,
+                        author: newComment.created_by?.username || 'WebSIM User',
+                        text: newComment.content || newComment.raw_content || 'Comment from WebSIM'
+                    }];
+                });
+            }
+        });
+        
+        if (socket) {
+            setProjectSocket(socket);
+            console.log('ProjectSocket connected successfully');
+        }
+        
+        return () => {
+            if (socket && socket.close) {
+                socket.close();
+            }
+        };
+    }, []);
 
     // Fetch initial comments on component mount
     useEffect(() => {
@@ -141,16 +252,11 @@ export default function App() {
     }, []);
     
     // --- Real-Time Update Logic ---
-    // This effect sets up a listener for our mock socket.
-    // This mirrors how a real application would listen for WebSocket events
-    // like the 'comment:created' one you described.
     useEffect(() => {
         const handleNewCommentEvent = (eventData) => {
             console.log("Client received 'comment:created' event:", eventData);
             const newComment = eventData.data.comment;
-            // The state update here is what makes the new comment appear in the list.
             setComments(currentComments => {
-                // Avoid adding duplicates if a comment somehow already exists
                 if (currentComments.find(c => c.id === newComment.id)) {
                     return currentComments;
                 }
@@ -158,14 +264,12 @@ export default function App() {
             });
         };
         
-        // Listen for new comments
         mockSocket.on('comment:created', handleNewCommentEvent);
 
-        // Clean up the listener when the component unmounts to prevent memory leaks
         return () => {
             mockSocket.off('comment:created', handleNewCommentEvent);
         };
-    }, []); // The empty dependency array ensures this effect runs only once.
+    }, []);
 
     // This function is passed to the form. It's now much simpler.
     const handleAddComment = async (comment) => {
@@ -175,7 +279,11 @@ export default function App() {
 
     return React.createElement('div', null,
         React.createElement('h1', null, 'Interactive Comment Section'),
-        React.createElement('p', { className: 'explanation' }, 'This demonstration now simulates a real-time backend. When you "Send Comment", it mimics sending data to a server, which then broadcasts a "comment:created" event (like the "ProjectSocket" event you mentioned) to all users. The app listens for this event and updates the comment list, ensuring everyone sees the new comment instantly.'),
+        React.createElement('p', { className: 'explanation' }, 
+            projectSocket 
+                ? 'Connected to WebSIM real-time system! Comments posted here will appear in the actual WebSIM project.'
+                : 'This demonstration simulates a real-time backend. When you "Send Comment", it mimics sending data to a server, which then broadcasts a "comment:created" event to all users.'
+        ),
         React.createElement('hr', null),
         React.createElement('h2', null, 'Comments'),
         isLoading
